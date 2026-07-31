@@ -27,6 +27,22 @@ CONFIG_PATH = ROOT / "config.json"
 JST = timezone(timedelta(hours=9))
 
 
+def load_env_file(path: Path = ROOT / ".env") -> None:
+    """ローカル実行用に .env を読む（既に設定済みの環境変数は上書きしない）。
+
+    Gmail のアプリパスワードは値に空白を含み `. .env` では壊れるので自前でパースする。
+    Actions では .env が無いので何もしない。
+    """
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        key, value = s.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def normalize_url(url: str) -> str:
     """トラッキングパラメータを落として重複判定を安定させる。
 
@@ -72,6 +88,7 @@ def filter_candidates(items: list[Item], seen: set[str], since: datetime) -> lis
 
 
 async def run(args: argparse.Namespace) -> int:
+    load_env_file()
     conf = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     dryrun = args.dry_run or os.getenv("DRYRUN", "") not in ("", "0", "false")
 
@@ -130,7 +147,14 @@ async def run(args: argparse.Namespace) -> int:
         print(plain)
         return 0
 
-    mailer.send(subject, plain, mailer.build_html(date_str, selected, len(candidates), warnings))
+    sent = mailer.send(
+        subject, plain, mailer.build_html(date_str, selected, len(candidates), warnings)
+    )
+    if not sent:
+        # 送れなかったのに既報にすると、その記事は二度と通知されない。
+        # 設定漏れに気づけるよう異常終了させる
+        print("[中断] 送信できなかったので既報を更新しない")
+        return 1
     state.save(known, evaluated_urls, int(conf.get("seen_max", 2000)))
     return 0
 
