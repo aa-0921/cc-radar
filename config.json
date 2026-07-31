@@ -57,17 +57,37 @@
       "url": "https://qiita.com/tags/claudecode/feed",
       "lang": "ja",
       "weight": "normal"
+    },
+    {
+      "name": "ProductHunt",
+      "url": "https://www.producthunt.com/feed",
+      "lang": "en",
+      "weight": "normal"
     }
   ],
   "hackernews": {
-    "queries": ["Claude Code", "anthropic", "MCP server"],
+    "queries": [
+      "Claude Code",
+      "anthropic",
+      "MCP server",
+      "Show HN",
+      "AI coding agent",
+      "developer tools",
+      "macOS app"
+    ],
     "min_points": 20
   },
   "github": {
     "queries": [
       "topic:claude-code",
       "topic:mcp-server",
-      "topic:claude-code-skills"
+      "topic:claude-code-skills",
+      "claude-code in:name,description",
+      "topic:claude-skills",
+      "topic:ai-agent",
+      "topic:developer-tools",
+      "topic:cli",
+      "topic:macos"
     ],
     "min_stars": 30
   },
