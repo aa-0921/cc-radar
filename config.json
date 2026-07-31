@@ -1,0 +1,77 @@
+{
+  "score_threshold": 7.0,
+  "max_items": 10,
+  "window_hours": 24,
+  "seen_max": 2000,
+  "llm_models": [
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "inclusionai/ling-3.0-flash:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "google/gemma-4-31b-it:free"
+  ],
+  "rss": [
+    {
+      "name": "公式changelog",
+      "url": "https://code.claude.com/docs/en/changelog/rss.xml",
+      "lang": "en",
+      "weight": "primary"
+    },
+    {
+      "name": "claude-code releases",
+      "url": "https://github.com/anthropics/claude-code/releases.atom",
+      "lang": "en",
+      "weight": "primary"
+    },
+    {
+      "name": "claude-code commits",
+      "url": "https://github.com/anthropics/claude-code/commits/main.atom",
+      "lang": "en",
+      "weight": "low"
+    },
+    {
+      "name": "GoogleNews(en)",
+      "url": "https://news.google.com/rss/search?q=%22Claude+Code%22&hl=en-US&gl=US&ceid=US:en",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "GoogleNews(ja)",
+      "url": "https://news.google.com/rss/search?q=%22Claude+Code%22&hl=ja&gl=JP&ceid=JP:ja",
+      "lang": "ja",
+      "weight": "normal"
+    },
+    {
+      "name": "Zenn claudecode",
+      "url": "https://zenn.dev/topics/claudecode/feed",
+      "lang": "ja",
+      "weight": "normal"
+    },
+    {
+      "name": "Zenn mcp",
+      "url": "https://zenn.dev/topics/mcp/feed",
+      "lang": "ja",
+      "weight": "normal"
+    },
+    {
+      "name": "Qiita claudecode",
+      "url": "https://qiita.com/tags/claudecode/feed",
+      "lang": "ja",
+      "weight": "normal"
+    }
+  ],
+  "hackernews": {
+    "queries": ["Claude Code", "anthropic", "MCP server"],
+    "min_points": 20
+  },
+  "github": {
+    "queries": [
+      "topic:claude-code",
+      "topic:mcp-server",
+      "topic:claude-code-skills"
+    ],
+    "min_stars": 30
+  },
+  "reddit": {
+    "subreddits": ["ClaudeAI", "ClaudeCode"]
+  }
+}

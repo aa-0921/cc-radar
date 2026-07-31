@@ -1,0 +1,46 @@
+name: Daily Claude Code Digest
+
+on:
+  schedule:
+    # 21:50 UTC = 6:50 JST。schedule は高負荷時に数十分遅延・最悪スキップするため早めに撃つ
+    - cron: '50 21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 依存パッケージインストール
+        run: pip install -r requirements.txt
+
+      - name: 収集・スコアリング・メール送信
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TARGET_EMAIL: ${{ secrets.TARGET_EMAIL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m src.main
+
+      - name: 既報リストをコミット
+        run: |
+          if git diff --quiet -- data/seen.json; then
+            echo "変更なし"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/seen.json
+          git commit -m "chore: 既報リストを更新"
+          # 実行で他ファイルが modified になっていても落ちないよう autostash
+          git pull --rebase --autostash
+          git push
