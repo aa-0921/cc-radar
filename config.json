@@ -1,6 +1,6 @@
 {
   "score_threshold": 7.0,
-  "max_items": 10,
+  "max_items": 20,
   "window_hours": 24,
   "seen_max": 2000,
   "llm_models": [
