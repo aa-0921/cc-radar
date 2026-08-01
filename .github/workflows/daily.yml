@@ -2,8 +2,9 @@ name: Daily Claude Code Digest
 
 on:
   schedule:
-    # 21:50 UTC = 6:50 JST。schedule は高負荷時に数十分遅延・最悪スキップするため早めに撃つ
-    - cron: '50 21 * * *'
+    # 22:05 UTC = 7:05 JST。schedule は高負荷時に遅延する（実測 54 分）ので、
+    # 遅延しても 7 時台に収まる時刻に置く。スキップに備えて workflow_dispatch も併記
+    - cron: '5 22 * * *'
   workflow_dispatch:
 
 permissions:

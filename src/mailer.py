@@ -24,7 +24,9 @@ def build_subject(date_str: str, picked: int, total: int) -> str:
     return f"[cc-radar] {date_str} 重要{picked}件/全{total}件"
 
 
-def build_plain(date_str: str, items: list[Item], total: int, warnings: list[str]) -> str:
+def build_plain(
+    date_str: str, items: list[Item], total: int, warnings: list[str], histogram: str = ""
+) -> str:
     lines = [
         f"Claude Code まわりの新着 {date_str}",
         f"候補 {total} 件を評価し、重要度 {items[0].score:.1f}〜{items[-1].score:.1f} の {len(items)} 件を選びました。"
@@ -50,10 +52,16 @@ def build_plain(date_str: str, items: list[Item], total: int, warnings: list[str
     if warnings:
         lines.append("--- 注意 ---")
         lines.extend(f"- {w}" for w in warnings)
+    if histogram:
+        # 掲載が多すぎ・少なすぎのときに閾値をどちらへ動かすか決めるための材料
+        lines.append("")
+        lines.append(f"スコア分布: {histogram}")
     return "\n".join(lines)
 
 
-def build_html(date_str: str, items: list[Item], total: int, warnings: list[str]) -> str:
+def build_html(
+    date_str: str, items: list[Item], total: int, warnings: list[str], histogram: str = ""
+) -> str:
     def esc(s: str) -> str:
         return html.escape(s or "")
 
@@ -90,6 +98,11 @@ def build_html(date_str: str, items: list[Item], total: int, warnings: list[str]
         blocks.append(
             f"<div style='margin-top:32px;padding:12px;background:#fff7ed;font-size:13px'>"
             f"<b>注意</b><ul>{items_html}</ul></div>"
+        )
+    if histogram:
+        blocks.append(
+            f"<div style='margin-top:24px;color:#888;font-size:12px'>"
+            f"スコア分布: {esc(histogram)}</div>"
         )
     blocks.append("</body></html>")
     return "\n".join(blocks)

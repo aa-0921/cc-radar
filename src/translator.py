@@ -4,7 +4,7 @@
 呼び出しは選抜分まとめて1リクエスト。
 """
 
-from src.llm import LLMClient, extract_json
+from src.llm import LLMClient
 from src.models import Item
 
 SYSTEM = """あなたは技術ニュースを日本語で伝える編集者です。
@@ -59,10 +59,7 @@ async def translate(items: list[Item], llm: LLMClient) -> str:
         return ""
 
     try:
-        raw = await llm.call(SYSTEM, USER_TEMPLATE.format(items=_render(items)))
-        rows = extract_json(raw)
-        if not isinstance(rows, list):
-            raise ValueError("配列以外が返った")
+        rows = await llm.call_json_list(SYSTEM, USER_TEMPLATE.format(items=_render(items)))
     except Exception as e:
         _fallback(items)
         return f"日本語化に失敗したため原文で出力（{type(e).__name__}: {e}）"

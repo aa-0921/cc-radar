@@ -5,7 +5,7 @@ LLM 呼び出しは1リクエストにまとめる（OpenRouter free 枠 50req/�
 Claude Code 文脈の日本語に適応させたもの（MIT License）。
 """
 
-from src.llm import LLMClient, extract_json
+from src.llm import LLMClient
 from src.models import Item
 
 SYSTEM = """あなたは Claude Code（Anthropic の CLI コーディングツール）を使って macOS で
@@ -111,10 +111,7 @@ async def score(items: list[Item], llm: LLMClient) -> str:
         return ""
 
     try:
-        raw = await llm.call(SYSTEM, USER_TEMPLATE.format(items=_render_items(items)))
-        rows = extract_json(raw)
-        if not isinstance(rows, list):
-            raise ValueError("配列以外が返った")
+        rows = await llm.call_json_list(SYSTEM, USER_TEMPLATE.format(items=_render_items(items)))
     except Exception as e:
         apply_heuristic(items, "機械スコア")
         return f"スコアリング失敗のため機械順で出力（{type(e).__name__}: {e}）"
@@ -184,8 +181,48 @@ def dedupe(items: list[Item]) -> list[Item]:
     return result
 
 
-def select(items: list[Item], threshold: float, max_items: int) -> list[Item]:
-    """閾値以上をスコア降順で上限まで取る"""
+def select(
+    items: list[Item],
+    threshold: float,
+    max_items: int,
+    source_caps: dict[str, int] | None = None,
+) -> list[Item]:
+    """閾値以上をスコア降順で上限まで取る。
+
+    source_caps はソース別の掲載上限。GitHub 新着は同点（8.0）が大量に並ぶため、
+    素のスコア順だと上位を占めて他ソースが押し出される（実測で 20 件中 18 件）。
+    枠から溢れたぶんは、全体の上限に余りがあれば埋め合わせに使う。
+    """
     picked = [it for it in items if it.score >= threshold]
     picked.sort(key=lambda x: (x.score, x.points), reverse=True)
-    return picked[:max_items]
+
+    caps = source_caps or {}
+    used: dict[str, int] = {}
+    within: list[Item] = []
+    overflow: list[Item] = []
+    for it in picked:
+        cap = caps.get(it.source)
+        if cap is not None and used.get(it.source, 0) >= cap:
+            overflow.append(it)
+            continue
+        used[it.source] = used.get(it.source, 0) + 1
+        within.append(it)
+
+    result = within[:max_items]
+    result.extend(overflow[: max_items - len(result)])
+    result.sort(key=lambda x: (x.score, x.points), reverse=True)
+    return result
+
+
+def histogram(items: list[Item]) -> str:
+    """スコア帯ごとの件数。閾値を上げ下げする判断材料にする"""
+    bands = [
+        ("9以上", 9.0, 99.0),
+        ("8台", 8.0, 9.0),
+        ("7台", 7.0, 8.0),
+        ("6台", 6.0, 7.0),
+        ("5以下", -1.0, 6.0),
+    ]
+    return " / ".join(
+        f"{label} {sum(1 for it in items if lo <= it.score < hi)}件" for label, lo, hi in bands
+    )

@@ -119,9 +119,14 @@ async def run(args: argparse.Namespace) -> int:
 
     merged = scorer.dedupe(candidates)
     selected = scorer.select(
-        merged, float(conf.get("score_threshold", 7.0)), int(conf.get("max_items", 10))
+        merged,
+        float(conf.get("score_threshold", 7.0)),
+        int(conf.get("max_items", 10)),
+        conf.get("source_caps") or {},
     )
+    histogram = scorer.histogram(merged)
     print(f"[選抜] 統合後 {len(merged)} 件 → 閾値通過 {len(selected)} 件")
+    print(f"[分布] {histogram}")
 
     # 評価済みは低スコアでも既報にする（翌日以降の再評価でトークンを無駄にしないため）
     evaluated_urls = [normalize_url(it.url) for it in candidates]
@@ -138,7 +143,7 @@ async def run(args: argparse.Namespace) -> int:
 
     date_str = datetime.now(JST).strftime("%Y-%m-%d")
     subject = mailer.build_subject(date_str, len(selected), len(candidates))
-    plain = mailer.build_plain(date_str, selected, len(candidates), warnings)
+    plain = mailer.build_plain(date_str, selected, len(candidates), warnings, histogram)
 
     if dryrun:
         print("=" * 60)
@@ -148,7 +153,9 @@ async def run(args: argparse.Namespace) -> int:
         return 0
 
     sent = mailer.send(
-        subject, plain, mailer.build_html(date_str, selected, len(candidates), warnings)
+        subject,
+        plain,
+        mailer.build_html(date_str, selected, len(candidates), warnings, histogram),
     )
     if not sent:
         # 送れなかったのに既報にすると、その記事は二度と通知されない。

@@ -60,6 +60,26 @@ class LLMClient:
                     errors.append(f"{model}: {type(e).__name__}")
         raise LLMError(" / ".join(errors))
 
+    async def call_json_list(self, system: str, user: str, attempts: int = 2) -> list:
+        """JSON 配列が返るまで呼び直す。
+
+        free モデルは同じ入力でも配列を返したり地の文を返したりする（実測で
+        日本語化が丸ごと落ちる日があった）。パースに失敗したときだけ撃ち直す。
+        2 回でも 1 実行あたり最大 4 リクエストで、free 枠の 50req/日 には収まる。
+        """
+        last: Exception = ValueError("試行回数が 0")
+        for _ in range(max(1, attempts)):
+            try:
+                rows = extract_json(await self.call(system, user))
+                if not isinstance(rows, list):
+                    raise ValueError("配列以外が返った")
+                return rows
+            except LLMError:
+                raise  # 全モデルに届かない状態は撃ち直しても変わらない
+            except Exception as e:
+                last = e
+        raise last
+
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 

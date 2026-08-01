@@ -9,7 +9,7 @@ Claude Code とその周辺エコシステム（MCP サーバー / スキル / �
 ## 仕組み
 
 ```
-収集 → 既報/時間窓フィルタ → LLM で採点(0-10)+重複統合 → 閾値7.0で選抜 → 日本語化 → メール
+収集 → 既報/時間窓フィルタ → LLM で採点(0-10)+重複統合 → 閾値7.0で選抜(最大20件) → 日本語化 → メール
 ```
 
 - 実行基盤: GitHub Actions の cron（public リポなら無料）
@@ -37,6 +37,10 @@ for m in sorted(json.load(sys.stdin)['data'], key=lambda m: -(m.get('context_len
 | 日本語 | Zenn（claudecode / mcp）、Qiita（claudecode）、Google News RSS |
 
 ソースの追加・閾値の変更は `config.json` で行う。
+
+`source_caps` はソース別の掲載上限。GitHub 新着は同点が大量に並ぶため、素のスコア順だと
+上位を占めて他ソースが押し出される（実測で 20 件中 18 件）。枠から溢れたぶんは、
+全体の上限に余りがあれば埋め合わせに使うので、GitHub しか新着が無い日でも枠は無駄にならない。
 
 ## ローカルで試す
 
@@ -66,19 +70,24 @@ python -m src.sources.rss https://code.claude.com/docs/en/changelog/rss.xml
 - `GMAIL_APP_PASSWORD`（Gmail のアプリパスワード）
 - `TARGET_EMAIL`（受信先。省略時は `GMAIL_USER`）
 
-cron は `50 21 * * *` UTC（6:50 JST）。Actions の schedule は高負荷時に遅延・スキップするため
-早めに撃ち、`workflow_dispatch` も併記している。
+cron は `5 22 * * *` UTC（7:05 JST）。Actions の schedule は高負荷時に遅延・スキップする
+（実測で 54 分遅れ）ため、遅れても 7 時台に収まる時刻に置き、`workflow_dispatch` も併記している。
 
 ## 運用メモ
 
 - 閾値 7.0 で 0 件の日はメールを送らない。届かない日が続くなら `config.json` の
-  `score_threshold` を 6.5 に下げる。多すぎるなら 7.5 に上げる
+  `score_threshold` を 6.5 に下げる。多すぎるなら 7.5 に上げる。
+  判断材料としてメール末尾に「スコア分布」（9以上/8台/7台/6台/5以下の件数）を出している
 - 採点済みの記事は低スコアでも `data/seen.json` に記録し、翌日以降 再採点しない
 - LLM が落ちた日は機械的なスコアにフォールバックし、メール末尾に「注意」として明示する。
   機械スコアでは GitHub 新着を 6.0（閾値未満）に抑える — star 数は「Claude Code にとって重要か」を
   測れないため、LLM 不在時は公式リリースと HackerNews だけを通す
-- `r/ClaudeAI` は Actions の共有 IP から 429 になることがある。他ソースは止めず、
-  失敗したソース名だけメール末尾に出す
+- Reddit は 1 本取ると約 60 秒 429 が返り続ける（`old.reddit.com` も同じ制限を共有していて
+  ホストを変えても回避できない）。サブレディットは並列にせず 60 秒間隔で 1 本ずつ取る。
+  他ソースとは並列に走るので全体は待たされない。それでも失敗したらソース名をメール末尾に出す
+- 日本語化は JSON 配列が返るまで最大 2 回撃つ。free モデルは同じ入力でも配列を返したり
+  地の文を返したりするため（実測で日本語化が丸ごと落ちる日があった）。
+  リトライ込みでも 1 実行あたり最大 4 リクエストで、free 枠の 50req/日 には収まる
 
 ## クレジット
 
