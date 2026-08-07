@@ -20,34 +20,51 @@ def _sources_line(item: Item) -> str:
     return f"{line}（{eng}）" if eng else line
 
 
-def build_subject(date_str: str, picked: int, total: int) -> str:
-    return f"[cc-radar] {date_str} 重要{picked}件/全{total}件"
+Section = tuple[str, list[Item]]  # (ジャンル見出し, 記事)
+
+
+def _nonempty(sections: list[Section]) -> list[Section]:
+    """記事が無いジャンルは見出しごと省く"""
+    return [(label, items) for label, items in sections if items]
+
+
+def build_subject(date_str: str, sections: list[Section]) -> str:
+    filled = _nonempty(sections)
+    total = sum(len(items) for _, items in filled)
+    if not filled:
+        return f"[cc-radar] {date_str} 重要0件"
+    breakdown = "/".join(f"{label}{len(items)}" for label, items in filled)
+    return f"[cc-radar] {date_str} 重要{total}件（{breakdown}）"
 
 
 def build_plain(
-    date_str: str, items: list[Item], total: int, warnings: list[str], histogram: str = ""
+    date_str: str, sections: list[Section], total: int, warnings: list[str], histogram: str = ""
 ) -> str:
+    filled = _nonempty(sections)
+    picked = sum(len(items) for _, items in filled)
     lines = [
         f"Claude Code まわりの新着 {date_str}",
-        f"候補 {total} 件を評価し、重要度 {items[0].score:.1f}〜{items[-1].score:.1f} の {len(items)} 件を選びました。"
-        if items
-        else f"候補 {total} 件を評価しました。",
-        "上から重要度順です。",
-        "",
+        f"候補 {total} 件を評価し、{picked} 件を選びました。",
+        "ジャンルごとに重要度順です。",
     ]
-    for i, it in enumerate(items, start=1):
-        lines.append(f"【{i}】({it.score:.1f}) {it.title_ja}")
-        if it.whats_new:
-            lines.append(f"  何が変わったか: {it.whats_new}")
-        if it.why_matters:
-            lines.append(f"  なぜ重要か:     {it.why_matters}")
-        lines.append(f"  出典: {_sources_line(it)}")
-        if it.title_ja != it.title:
-            lines.append(f"  原題: {it.title}")
-        lines.append(f"  {it.url}")
-        if it.discuss_url and it.discuss_url != it.url:
-            lines.append(f"  議論: {it.discuss_url}")
+    for label, items in filled:
         lines.append("")
+        lines.append(f"■ {label}（{len(items)}件）")
+        lines.append("")
+        # 番号はジャンルごとに 1 から振り直す
+        for i, it in enumerate(items, start=1):
+            lines.append(f"【{i}】({it.score:.1f}) {it.title_ja}")
+            if it.whats_new:
+                lines.append(f"  何が変わったか: {it.whats_new}")
+            if it.why_matters:
+                lines.append(f"  なぜ重要か:     {it.why_matters}")
+            lines.append(f"  出典: {_sources_line(it)}")
+            if it.title_ja != it.title:
+                lines.append(f"  原題: {it.title}")
+            lines.append(f"  {it.url}")
+            if it.discuss_url and it.discuss_url != it.url:
+                lines.append(f"  議論: {it.discuss_url}")
+            lines.append("")
 
     if warnings:
         lines.append("--- 注意 ---")
@@ -60,38 +77,49 @@ def build_plain(
 
 
 def build_html(
-    date_str: str, items: list[Item], total: int, warnings: list[str], histogram: str = ""
+    date_str: str, sections: list[Section], total: int, warnings: list[str], histogram: str = ""
 ) -> str:
     def esc(s: str) -> str:
         return html.escape(s or "")
 
+    filled = _nonempty(sections)
+    picked = sum(len(items) for _, items in filled)
     blocks = [
         "<html><body style=\"font-family:-apple-system,'Hiragino Sans',sans-serif;"
         'line-height:1.7;color:#222;max-width:720px">',
         f"<h2 style='margin-bottom:4px'>Claude Code まわりの新着 {esc(date_str)}</h2>",
-        f"<p style='color:#666;margin-top:0'>候補 {total} 件を評価し、重要度順に {len(items)} 件を掲載。</p>",
+        f"<p style='color:#666;margin-top:0'>候補 {total} 件を評価し、ジャンル別に {picked} 件を掲載。</p>",
     ]
-    for i, it in enumerate(items, start=1):
-        blocks.append("<div style='margin:24px 0;padding-left:12px;border-left:3px solid #d0d0d0'>")
+    for label, items in filled:
         blocks.append(
-            f"<div style='font-weight:600;font-size:16px'>"
-            f"<span style='color:#b45309'>[{it.score:.1f}]</span> "
-            f"<a href='{esc(it.url)}' style='color:#1a56db;text-decoration:none'>{i}. {esc(it.title_ja)}</a>"
-            f"</div>"
+            f"<h3 style='margin:32px 0 0;padding-bottom:4px;border-bottom:2px solid #333'>"
+            f"{esc(label)} <span style='color:#888;font-size:13px;font-weight:400'>"
+            f"{len(items)}件</span></h3>"
         )
-        if it.whats_new:
-            blocks.append(f"<div><b>何が変わったか:</b> {esc(it.whats_new)}</div>")
-        if it.why_matters:
-            blocks.append(f"<div><b>なぜ重要か:</b> {esc(it.why_matters)}</div>")
-        meta = [f"出典: {esc(_sources_line(it))}"]
-        if it.title_ja != it.title:
-            meta.append(f"原題: {esc(it.title)}")
-        if it.discuss_url and it.discuss_url != it.url:
-            meta.append(f"<a href='{esc(it.discuss_url)}' style='color:#666'>議論を見る</a>")
-        blocks.append(
-            f"<div style='color:#666;font-size:13px;margin-top:4px'>{' ｜ '.join(meta)}</div>"
-        )
-        blocks.append("</div>")
+        for i, it in enumerate(items, start=1):
+            blocks.append(
+                "<div style='margin:24px 0;padding-left:12px;border-left:3px solid #d0d0d0'>"
+            )
+            blocks.append(
+                f"<div style='font-weight:600;font-size:16px'>"
+                f"<span style='color:#b45309'>[{it.score:.1f}]</span> "
+                f"<a href='{esc(it.url)}' style='color:#1a56db;text-decoration:none'>"
+                f"{i}. {esc(it.title_ja)}</a>"
+                f"</div>"
+            )
+            if it.whats_new:
+                blocks.append(f"<div><b>何が変わったか:</b> {esc(it.whats_new)}</div>")
+            if it.why_matters:
+                blocks.append(f"<div><b>なぜ重要か:</b> {esc(it.why_matters)}</div>")
+            meta = [f"出典: {esc(_sources_line(it))}"]
+            if it.title_ja != it.title:
+                meta.append(f"原題: {esc(it.title)}")
+            if it.discuss_url and it.discuss_url != it.url:
+                meta.append(f"<a href='{esc(it.discuss_url)}' style='color:#666'>議論を見る</a>")
+            blocks.append(
+                f"<div style='color:#666;font-size:13px;margin-top:4px'>{' ｜ '.join(meta)}</div>"
+            )
+            blocks.append("</div>")
 
     if warnings:
         items_html = "".join(f"<li>{esc(w)}</li>" for w in warnings)

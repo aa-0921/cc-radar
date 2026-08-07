@@ -1,7 +1,8 @@
 # cc-radar
 
-Claude Code とその周辺エコシステム（MCP サーバー / スキル / サブエージェント / CLI）の新着情報を
-毎日集めて、**重要度順に並べた日本語のメール**を朝に届ける仕組み。
+Claude Code とその周辺エコシステム（MCP サーバー / スキル / サブエージェント / CLI）に加えて、
+開発ツールと macOS アプリの新着情報を毎日集めて、
+**ジャンル別・重要度順に並べた日本語のメール**を朝に届ける仕組み。
 
 英語ソースの方が数日〜数週間早いが毎日巡回するのは現実的でないので、
 英語・日本語の両方を自動で集めて要約する。ランニングコストは 0 円。
@@ -9,13 +10,27 @@ Claude Code とその周辺エコシステム（MCP サーバー / スキル / �
 ## 仕組み
 
 ```
-収集 → 既報/時間窓フィルタ → LLM で採点(0-10)+重複統合 → 閾値7.0で選抜(最大20件) → 日本語化 → メール
+収集 → 既報/時間窓フィルタ → LLM で採点(0-10)+ジャンル分類+重複統合
+     → ジャンル別に閾値で選抜(各最大20件) → 日本語化 → メール
 ```
+
+ジャンルは 3 つ。合計 1 枠だとスコア上位帯（Claude Code 本体のリリース）が枠を埋めて
+他ジャンルが押し出されるため、枠と閾値をジャンルごとに分けている。
+
+| キー | 内容 | 既定の閾値 / 枠 |
+|---|---|---|
+| `cc` | Claude Code 本体とエコシステム | 7.0 / 20 件 |
+| `dev` | 開発が楽になるツール（CLI・エディタ拡張・AI コーディング支援） | 6.5 / 20 件 |
+| `mac` | 作業効率を上げる macOS アプリ | 6.5 / 20 件 |
+
+どれにも当たらないものは `other` に分類され、掲載枠が無いので落ちる。
 
 - 実行基盤: GitHub Actions の cron（public リポなら無料）
 - 送信: Gmail SMTP（アプリパスワード）
-- 要約・翻訳: OpenRouter の `:free` モデル。**1実行あたり LLM 呼び出しは2回**
-  （採点+重複判定で1回、日本語化で1回）。free 枠の 50req/日 を守るためバッチ化している
+- 要約・翻訳: OpenRouter の `:free` モデル。採点は `score_batch_size`（既定 80 件）、
+  日本語化は `translate_batch_size`（既定 20 件）ごとに分割して呼ぶ。
+  まとめて投げると出力 JSON が途中で切れるため。**1実行あたり 6 回程度**（撃ち直し込みで最大 12 回）で、
+  free 枠の 50req/日 に収まる
 
 `config.json` の `llm_models` は上から順に試し、最初に応答したものを使う。
 **OpenRouter の `:free` モデルは予告なく廃止される**（廃止済みモデルは 404 + 有料版の slug を返す）。
@@ -33,8 +48,9 @@ for m in sorted(json.load(sys.stdin)['data'], key=lambda m: -(m.get('context_len
 | 種別 | ソース |
 |---|---|
 | 一次情報 | 公式 changelog RSS、`anthropics/claude-code` の releases / commits Atom |
-| 英語コミュニティ | Hacker News（Algolia API）、Google News RSS、GitHub Search API、Reddit（best-effort） |
+| 英語コミュニティ | Hacker News（Algolia API）、Google News RSS、GitHub Search API、Lobsters、GitHub Trending、Reddit（best-effort） |
 | 日本語 | Zenn（claudecode / mcp）、Qiita（claudecode）、Google News RSS |
+| macOS アプリ | Reddit r/macapps、ProductHunt |
 
 ソースの追加・閾値の変更は `config.json` で行う。
 
@@ -70,14 +86,17 @@ python -m src.sources.rss https://code.claude.com/docs/en/changelog/rss.xml
 - `GMAIL_APP_PASSWORD`（Gmail のアプリパスワード）
 - `TARGET_EMAIL`（受信先。省略時は `GMAIL_USER`）
 
-cron は `5 22 * * *` UTC（7:05 JST）。Actions の schedule は高負荷時に遅延・スキップする
-（実測で 54 分遅れ）ため、遅れても 7 時台に収まる時刻に置き、`workflow_dispatch` も併記している。
+cron は 22:05 / 22:35 / 23:05 UTC（7:05 / 7:35 / 8:05 JST）の 3 本。Actions の schedule は
+高負荷時に遅延（実測 54 分）するだけでなく丸ごとスキップされる（実測 2026-08-06）ため、
+30 分おきに打つ。先に成功した回が `data/seen.json` を更新するので後続は「新着なし」で終わり、
+メールは 1 通に収まる。逆に 1 本目が送信失敗した場合は seen を更新しないので後続がリカバリする。
+同時実行は `concurrency` で直列化している。
 
 ## 運用メモ
 
-- 閾値 7.0 で 0 件の日はメールを送らない。届かない日が続くなら `config.json` の
-  `score_threshold` を 6.5 に下げる。多すぎるなら 7.5 に上げる。
-  判断材料としてメール末尾に「スコア分布」（9以上/8台/7台/6台/5以下の件数）を出している
+- 全ジャンル 0 件の日はメールを送らない。特定ジャンルが薄いなら `config.json` の
+  `categories.<キー>.threshold` を下げる（多すぎるなら上げる）。
+  判断材料としてメール末尾に「スコア分布」（9以上/8台/7台/6台/5以下の件数）をジャンル別に出している
 - 採点済みの記事は低スコアでも `data/seen.json` に記録し、翌日以降 再採点しない
 - LLM が落ちた日は機械的なスコアにフォールバックし、メール末尾に「注意」として明示する。
   機械スコアでは GitHub 新着を 6.0（閾値未満）に抑える — star 数は「Claude Code にとって重要か」を

@@ -53,32 +53,49 @@ def _fallback(items: list[Item]) -> None:
             it.whats_new = it.summary
 
 
-async def translate(items: list[Item], llm: LLMClient) -> str:
-    """選抜分を1リクエストで日本語化する。戻り値は警告メッセージ（正常時は空文字）"""
-    if not items:
-        return ""
-
-    try:
-        rows = await llm.call_json_list(SYSTEM, USER_TEMPLATE.format(items=_render(items)))
-    except Exception as e:
-        _fallback(items)
-        return f"日本語化に失敗したため原文で出力（{type(e).__name__}: {e}）"
-
+def _apply_rows(chunk: list[Item], rows: list) -> int:
+    """LLM の応答をバッチ内の Item に反映し、埋まらなかった件数を返す"""
     filled = set()
     for row in rows:
         try:
             idx = int(row["id"]) - 1
         except (KeyError, TypeError, ValueError):
             continue
-        if not 0 <= idx < len(items):
+        if not 0 <= idx < len(chunk):
             continue
-        it = items[idx]
+        it = chunk[idx]
         it.title_ja = str(row.get("title_ja") or "").strip()
         it.whats_new = str(row.get("whats_new") or "").strip()
         it.why_matters = str(row.get("why_matters") or "").strip()
         filled.add(idx)
+    return len(chunk) - len(filled)
+
+
+async def translate(items: list[Item], llm: LLMClient, batch_size: int = 20) -> str:
+    """選抜分を日本語化する。戻り値は警告メッセージ（正常時は空文字）。
+
+    1件あたり日本語3項目を書かせるので、まとめて投げると出力が途中で切れる。
+    batch_size ごとに分割して呼ぶ。
+    """
+    if not items:
+        return ""
+
+    size = max(1, batch_size)
+    warnings: list[str] = []
+    missing_total = 0
+
+    for offset in range(0, len(items), size):
+        chunk = items[offset : offset + size]
+        try:
+            rows = await llm.call_json_list(SYSTEM, USER_TEMPLATE.format(items=_render(chunk)))
+        except Exception as e:
+            missing_total += len(chunk)
+            warnings.append(f"{len(chunk)}件の日本語化に失敗（{type(e).__name__}: {e}）")
+            continue
+        missing_total += _apply_rows(chunk, rows)
 
     _fallback(items)  # 欠けた分は原文で埋める
 
-    missing = len(items) - len(filled)
-    return f"{missing}/{len(items)} 件は日本語化されず原文のまま" if missing else ""
+    if missing_total:
+        warnings.append(f"{missing_total}/{len(items)} 件は日本語化されず原文のまま")
+    return " / ".join(warnings)

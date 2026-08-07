@@ -113,19 +113,29 @@ async def run(args: argparse.Namespace) -> int:
     warnings = [f"取得失敗: {f}" for f in failed]
 
     llm = LLMClient(conf.get("llm_models", []))
-    warn = await scorer.score(candidates, llm)
+    warn = await scorer.score(candidates, llm, int(conf.get("score_batch_size", 80)))
     if warn:
         warnings.append(warn)
 
     merged = scorer.dedupe(candidates)
-    selected = scorer.select(
-        merged,
-        float(conf.get("score_threshold", 7.0)),
-        int(conf.get("max_items", 10)),
-        conf.get("source_caps") or {},
+    categories = conf.get("categories") or {}
+    by_category = scorer.select_by_category(merged, categories, conf.get("source_caps") or {})
+
+    # ジャンルの並びは config の記載順（cc → dev → mac）を維持する
+    sections = [
+        (str(categories[key].get("label", key)), by_category.get(key, []))
+        for key in categories
+    ]
+    selected = [it for _, items in sections for it in items]
+
+    histogram = " ｜ ".join(
+        f"{categories[key].get('label', key)}: "
+        f"{scorer.histogram([it for it in merged if it.category == key])}"
+        for key in categories
     )
-    histogram = scorer.histogram(merged)
-    print(f"[選抜] 統合後 {len(merged)} 件 → 閾値通過 {len(selected)} 件")
+    print(f"[選抜] 統合後 {len(merged)} 件 → 掲載 {len(selected)} 件 " + ", ".join(
+        f"{key} {len(by_category.get(key, []))}" for key in categories
+    ))
     print(f"[分布] {histogram}")
 
     # 評価済みは低スコアでも既報にする（翌日以降の再評価でトークンを無駄にしないため）
@@ -137,13 +147,13 @@ async def run(args: argparse.Namespace) -> int:
             state.save(known, evaluated_urls, int(conf.get("seen_max", 2000)))
         return 0
 
-    warn = await translator.translate(selected, llm)
+    warn = await translator.translate(selected, llm, int(conf.get("translate_batch_size", 20)))
     if warn:
         warnings.append(warn)
 
     date_str = datetime.now(JST).strftime("%Y-%m-%d")
-    subject = mailer.build_subject(date_str, len(selected), len(candidates))
-    plain = mailer.build_plain(date_str, selected, len(candidates), warnings, histogram)
+    subject = mailer.build_subject(date_str, sections)
+    plain = mailer.build_plain(date_str, sections, len(candidates), warnings, histogram)
 
     if dryrun:
         print("=" * 60)
@@ -155,7 +165,7 @@ async def run(args: argparse.Namespace) -> int:
     sent = mailer.send(
         subject,
         plain,
-        mailer.build_html(date_str, selected, len(candidates), warnings, histogram),
+        mailer.build_html(date_str, sections, len(candidates), warnings, histogram),
     )
     if not sent:
         # 送れなかったのに既報にすると、その記事は二度と通知されない。

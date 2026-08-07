@@ -23,6 +23,7 @@ class Item:
 
     # 後段で埋める
     score: float = 0.0
+    category: str = ""  # cc / dev / mac / other（掲載枠と閾値をジャンル別に持つため）
     reason: str = ""
     tags: list[str] = field(default_factory=list)
     title_ja: str = ""

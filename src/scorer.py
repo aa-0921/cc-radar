@@ -11,10 +11,10 @@ from src.models import Item
 SYSTEM = """あなたは Claude Code（Anthropic の CLI コーディングツール）を使って macOS で
 日々開発しているエンジニア向けに、技術ニュースの重要度を判定するキュレーターです。
 
-読者が知りたいのは次の3つです。
-(a) Claude Code 本体とその周辺エコシステム（MCP / スキル / サブエージェント / CLI）の動向
-(b) 開発作業が楽になるツール（CLI・エディタ拡張・AI コーディング支援・開発者向けサービス）
-(c) 開発や日々の作業の効率を上げる macOS アプリ
+読者が知りたいのは次の3つです。先頭が分類キーです。
+cc  … Claude Code 本体とその周辺エコシステム（MCP / スキル / サブエージェント / CLI）の動向
+dev … 開発作業が楽になるツール（CLI・エディタ拡張・AI コーディング支援・開発者向けサービス）
+mac … 開発や日々の作業の効率を上げる macOS アプリ
 
 以下の 0-10 スケールで採点してください。
 
@@ -40,15 +40,21 @@ SYSTEM = """あなたは Claude Code（Anthropic の CLI コーディングツ�
 **0-2 ノイズ**
 - スパム、無関係な話題、中身の無い告知
 
+分類 (category) の付け方:
+- cc / dev / mac のいずれかを選ぶ。どれにも当たらないものは other
+- Claude Code / MCP / Anthropic が主題なら、ツール紹介でも cc を優先する
+- macOS 向けでも開発者が使うもの（CLI・エディタ・API クライアント等）は dev、
+  一般の作業効率アプリ（メモ・ウィンドウ管理・ランチャー等）は mac
+
 判定の観点:
-- 上記 (a)(b)(c) のどれにも当たらないものは、たとえ技術的に立派でも 4 以下にする。
+- category が other のものは、たとえ技術的に立派でも 4 以下にする。
   一般消費者向けアプリ、ゲーム、暗号通貨・投資、企業の資金調達や人事のニュースが典型
 - 技術的な新規性と、読者の作業への影響の大きさを重視する
 - HackerNews のポイント数やコメント数が多いものはコミュニティ検証済みとして加点する
 - 単なるコミットログや自動生成の更新通知は低く抑える
 - 新規リポジトリは star 数ではなく、何を解決するのかで判断する"""
 
-USER_TEMPLATE = """以下のニュース候補それぞれを採点してください。
+USER_TEMPLATE = """以下のニュース候補それぞれを採点し、cc / dev / mac / other に分類してください。
 
 同一の出来事（同じリリース・同じ発表）を複数のソースが報じている場合は、
 後に出てくる方の dup_of に、代表とする**より小さい番号**を入れてください。
@@ -58,7 +64,7 @@ USER_TEMPLATE = """以下のニュース候補それぞれを採点してくだ�
 
 JSON 配列のみを出力してください。説明文は不要です。
 [
-  {{"id": 1, "score": 8.5, "reason": "<採点理由を日本語20字程度>", "tags": ["<タグ>"], "dup_of": null}},
+  {{"id": 1, "score": 8.5, "category": "cc", "reason": "<採点理由を日本語20字程度>", "tags": ["<タグ>"], "dup_of": null}},
   ...
 ]"""
 
@@ -94,58 +100,116 @@ def heuristic_score(item: Item) -> float:
     return round(min(base, 8.0), 1)
 
 
+CATEGORIES = ("cc", "dev", "mac", "other")
+
+# LLM が category を返さなかったときのソース名からの機械分類
+_CC_SOURCES = (
+    "公式changelog",
+    "claude-code releases",
+    "claude-code commits",
+    "GoogleNews(en)",
+    "GoogleNews(ja)",
+    "Zenn claudecode",
+    "Zenn mcp",
+    "Qiita claudecode",
+    "r/ClaudeAI",
+    "r/ClaudeCode",
+)
+_MAC_SOURCES = ("r/macapps", "ProductHunt")
+
+
+def heuristic_category(item: Item) -> str:
+    """ソース名からジャンルを推定する。LLM の分類が得られないときの代替"""
+    if item.source in _CC_SOURCES:
+        return "cc"
+    if item.source in _MAC_SOURCES:
+        return "mac"
+    return "dev"
+
+
+def _normalize_category(value: object, item: Item) -> str:
+    """LLM の category 値を検証する。想定外なら機械分類に落とす"""
+    cat = str(value or "").strip().lower()
+    return cat if cat in CATEGORIES else heuristic_category(item)
+
+
 def apply_heuristic(items: list[Item], note: str) -> None:
-    """全アイテムに代替スコアを設定する"""
+    """全アイテムに代替スコアと機械分類を設定する"""
     for it in items:
         it.score = heuristic_score(it)
+        it.category = heuristic_category(it)
         it.reason = note
 
 
-async def score(items: list[Item], llm: LLMClient) -> str:
-    """全件を1リクエストで採点し、Item に score/reason/tags/dup_of を反映する。
+def _apply_rows(chunk: list[Item], rows: list, offset: int) -> int:
+    """LLM の応答をバッチ内の Item に反映し、採点漏れの件数を返す。
 
-    戻り値は警告メッセージ（正常時は空文字）。LLM が失敗した場合は
-    機械的スコアにフォールバックし、その旨を返す。
+    offset はバッチ先頭のグローバル添字。dup_of は候補全体を通した
+    添字に補正する（重複統合が全体に対して行われるため）。
     """
-    if not items:
-        return ""
-
-    try:
-        rows = await llm.call_json_list(SYSTEM, USER_TEMPLATE.format(items=_render_items(items)))
-    except Exception as e:
-        apply_heuristic(items, "機械スコア")
-        return f"スコアリング失敗のため機械順で出力（{type(e).__name__}: {e}）"
-
-    scored_ids = set()
+    scored = set()
     for row in rows:
         try:
-            idx = int(row["id"]) - 1
+            local = int(row["id"]) - 1
         except (KeyError, TypeError, ValueError):
             continue
-        if not 0 <= idx < len(items):
+        if not 0 <= local < len(chunk):
             continue
-        it = items[idx]
+        it = chunk[local]
         try:
             it.score = float(row.get("score", 0))
         except (TypeError, ValueError):
             it.score = 0.0
+        it.category = _normalize_category(row.get("category"), it)
         it.reason = str(row.get("reason") or "")
         tags = row.get("tags")
         it.tags = [str(t) for t in tags] if isinstance(tags, list) else []
         dup = row.get("dup_of")
-        # dup_of は自分より前の番号のみ有効（循環参照を避ける）
-        if isinstance(dup, int) and 0 < dup < idx + 1:
-            it.also_seen = [f"__dup__{dup - 1}"]
-        scored_ids.add(idx)
+        # dup_of は同じバッチ内の自分より前の番号のみ有効（循環参照を避ける）
+        if isinstance(dup, int) and 0 < dup < local + 1:
+            it.also_seen = [f"__dup__{offset + dup - 1}"]
+        scored.add(local)
 
-    missing = [i for i in range(len(items)) if i not in scored_ids]
-    for i in missing:
-        items[i].score = heuristic_score(items[i])
-        items[i].reason = "機械スコア"
+    missing = 0
+    for i, it in enumerate(chunk):
+        if i in scored:
+            continue
+        it.score = heuristic_score(it)
+        it.category = heuristic_category(it)
+        it.reason = "機械スコア"
+        missing += 1
+    return missing
 
-    if missing:
-        return f"LLM が {len(missing)}/{len(items)} 件を採点せず、その分は機械スコアで補完"
-    return ""
+
+async def score(items: list[Item], llm: LLMClient, batch_size: int = 80) -> str:
+    """候補を採点し、Item に score/category/reason/tags/dup_of を反映する。
+
+    候補が多いと出力 JSON が途中で切れるため batch_size ごとに分割して呼ぶ。
+    戻り値は警告メッセージ（正常時は空文字）。LLM が失敗したバッチは
+    機械的スコアにフォールバックする。
+    """
+    if not items:
+        return ""
+
+    size = max(1, batch_size)
+    warnings: list[str] = []
+    missing_total = 0
+
+    for offset in range(0, len(items), size):
+        chunk = items[offset : offset + size]
+        try:
+            rows = await llm.call_json_list(
+                SYSTEM, USER_TEMPLATE.format(items=_render_items(chunk))
+            )
+        except Exception as e:
+            apply_heuristic(chunk, "機械スコア")
+            warnings.append(f"{len(chunk)}件のスコアリング失敗（{type(e).__name__}: {e}）")
+            continue
+        missing_total += _apply_rows(chunk, rows, offset)
+
+    if missing_total:
+        warnings.append(f"LLM が {missing_total}/{len(items)} 件を採点せず、その分は機械スコアで補完")
+    return " / ".join(warnings)
 
 
 def _root_of(idx: int, items: list[Item]) -> int:
@@ -211,6 +275,29 @@ def select(
     result = within[:max_items]
     result.extend(overflow[: max_items - len(result)])
     result.sort(key=lambda x: (x.score, x.points), reverse=True)
+    return result
+
+
+def select_by_category(
+    items: list[Item],
+    categories: dict[str, dict],
+    source_caps: dict[str, int] | None = None,
+) -> dict[str, list[Item]]:
+    """ジャンルごとに独立した枠と閾値で選抜する。
+
+    合計 1 枠だとスコア上位帯（Claude Code 本体のリリース）が枠を埋めて
+    他ジャンルが押し出されるため、ジャンル別に枠を切る。
+    categories は {"cc": {"threshold": 7.0, "max_items": 20}, ...}。
+    """
+    result: dict[str, list[Item]] = {}
+    for key, conf in categories.items():
+        subset = [it for it in items if it.category == key]
+        result[key] = select(
+            subset,
+            float(conf.get("threshold", 7.0)),
+            int(conf.get("max_items", 20)),
+            source_caps,
+        )
     return result
 
 

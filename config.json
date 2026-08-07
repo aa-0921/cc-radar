@@ -1,6 +1,11 @@
 {
-  "score_threshold": 7.0,
-  "max_items": 20,
+  "categories": {
+    "cc": { "label": "Claude Code", "threshold": 7.0, "max_items": 20 },
+    "dev": { "label": "開発ツール", "threshold": 6.5, "max_items": 20 },
+    "mac": { "label": "macOS アプリ", "threshold": 6.5, "max_items": 20 }
+  },
+  "score_batch_size": 80,
+  "translate_batch_size": 20,
   "source_caps": {
     "GitHub新着": 8
   },
@@ -66,6 +71,18 @@
       "url": "https://www.producthunt.com/feed",
       "lang": "en",
       "weight": "normal"
+    },
+    {
+      "name": "Lobsters",
+      "url": "https://lobste.rs/rss",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "GitHub Trending",
+      "url": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml",
+      "lang": "en",
+      "weight": "normal"
     }
   ],
   "hackernews": {
@@ -95,6 +112,6 @@
     "min_stars": 30
   },
   "reddit": {
-    "subreddits": ["ClaudeAI", "ClaudeCode"]
+    "subreddits": ["ClaudeAI", "ClaudeCode", "macapps"]
   }
 }
