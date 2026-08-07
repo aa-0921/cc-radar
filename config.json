@@ -4,7 +4,7 @@
   "source_caps": {
     "GitHub新着": 8
   },
-  "window_hours": 24,
+  "window_hours": 30,
   "seen_max": 2000,
   "llm_models": [
     "nvidia/nemotron-3-ultra-550b-a55b:free",

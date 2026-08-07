@@ -3,12 +3,23 @@ name: Daily Claude Code Digest
 on:
   schedule:
     # 22:05 UTC = 7:05 JST。schedule は高負荷時に遅延する（実測 54 分）ので、
-    # 遅延しても 7 時台に収まる時刻に置く。スキップに備えて workflow_dispatch も併記
+    # 遅延しても 7 時台に収まる時刻に置く。スキップに備えて workflow_dispatch も併記。
+    # schedule は高負荷時に丸ごとスキップされる（実測 2026-08-06 は発火なし）ため
+    # 30 分おきに 3 本打つ。先に成功した回が seen.json を更新するので、
+    # 後続は「新着なし」で終わりメールは 1 通に収まる。
+    # 逆に 1 本目が送信失敗した場合は seen.json を更新しないので後続がリカバリする
     - cron: '5 22 * * *'
+    - cron: '35 22 * * *'
+    - cron: '5 23 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# 遅延で複数本が重なっても直列化する（同時に走ると双方が新着と判定して二重送信になる）
+concurrency:
+  group: cc-radar-digest
+  cancel-in-progress: false
 
 jobs:
   digest:
