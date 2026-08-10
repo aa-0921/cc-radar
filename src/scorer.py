@@ -115,7 +115,7 @@ _CC_SOURCES = (
     "r/ClaudeAI",
     "r/ClaudeCode",
 )
-_MAC_SOURCES = ("r/macapps", "ProductHunt")
+_MAC_SOURCES = ("r/macapps", "ProductHunt", "MacStories", "9to5Mac")
 
 
 def heuristic_category(item: Item) -> str:

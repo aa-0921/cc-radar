@@ -5,9 +5,9 @@ on:
     # 22:05 UTC = 7:05 JST。schedule は高負荷時に遅延する（実測 54 分）ので、
     # 遅延しても 7 時台に収まる時刻に置く。スキップに備えて workflow_dispatch も併記。
     # schedule は高負荷時に丸ごとスキップされる（実測 2026-08-06 は発火なし）ため
-    # 30 分おきに 3 本打つ。先に成功した回が seen.json を更新するので、
-    # 後続は「新着なし」で終わりメールは 1 通に収まる。
-    # 逆に 1 本目が送信失敗した場合は seen.json を更新しないので後続がリカバリする
+    # 30 分おきに 3 本打つ。先に成功した回が last_sent.json に日付を書くので、
+    # 後続はそれを見て収集前に終了し、メールは 1 通に収まる。
+    # 逆に 1 本目が送信失敗した場合は日付を書かないので後続がリカバリする
     - cron: '5 22 * * *'
     - cron: '35 22 * * *'
     - cron: '5 23 * * *'
@@ -43,16 +43,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python -m src.main
 
-      - name: 既報リストをコミット
+      - name: 既報リスト・送信日をコミット
         run: |
-          if git diff --quiet -- data/seen.json; then
+          if git diff --quiet -- data/; then
             echo "変更なし"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/seen.json
-          git commit -m "chore: 既報リストを更新"
+          git add data/
+          git commit -m "chore: 既報リスト・送信日を更新"
           # 実行で他ファイルが modified になっていても落ちないよう autostash
           git pull --rebase --autostash
           git push

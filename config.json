@@ -83,6 +83,30 @@
       "url": "https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml",
       "lang": "en",
       "weight": "normal"
+    },
+    {
+      "name": "dev.to",
+      "url": "https://dev.to/feed",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "Changelog",
+      "url": "https://changelog.com/news/feed",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "MacStories",
+      "url": "https://www.macstories.net/feed/",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "9to5Mac",
+      "url": "https://9to5mac.com/feed/",
+      "lang": "en",
+      "weight": "normal"
     }
   ],
   "hackernews": {

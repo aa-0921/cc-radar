@@ -94,6 +94,13 @@ async def run(args: argparse.Namespace) -> int:
 
     hours = args.since_hours or int(conf.get("window_hours", 24))
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    date_str = datetime.now(JST).strftime("%Y-%m-%d")
+
+    # cron を 30 分おきに 3 本打っているので、送信済みの日は収集も採点もせず即終了する。
+    # 既報フィルタだけでは後続 run が「その 30 分の新着」を拾って 2 通目を送ってしまう
+    if not dryrun and state.sent_on() == date_str:
+        print(f"[終了] {date_str} は送信済み。cron の後続実行なので何もしない")
+        return 0
 
     raw_items, failed = await collect_all(conf, since)
     print(f"[収集] {len(raw_items)} 件 / 失敗 {len(failed)} ソース")
@@ -151,7 +158,6 @@ async def run(args: argparse.Namespace) -> int:
     if warn:
         warnings.append(warn)
 
-    date_str = datetime.now(JST).strftime("%Y-%m-%d")
     subject = mailer.build_subject(date_str, sections)
     plain = mailer.build_plain(date_str, sections, len(candidates), warnings, histogram)
 
@@ -173,6 +179,7 @@ async def run(args: argparse.Namespace) -> int:
         print("[中断] 送信できなかったので既報を更新しない")
         return 1
     state.save(known, evaluated_urls, int(conf.get("seen_max", 2000)))
+    state.mark_sent(date_str)
     return 0
 
 

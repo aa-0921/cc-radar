@@ -51,9 +51,9 @@ for m in sorted(json.load(sys.stdin)['data'], key=lambda m: -(m.get('context_len
 | 種別 | ソース |
 |---|---|
 | 一次情報 | 公式 changelog RSS、`anthropics/claude-code` の releases / commits Atom |
-| 英語コミュニティ | Hacker News（Algolia API）、Google News RSS、GitHub Search API、Lobsters、GitHub Trending、Reddit（best-effort） |
+| 英語コミュニティ | Hacker News（Algolia API）、Google News RSS、GitHub Search API、Lobsters、GitHub Trending、dev.to、Changelog、Reddit（best-effort） |
 | 日本語 | Zenn（claudecode / mcp）、Qiita（claudecode）、Google News RSS |
-| macOS アプリ | Reddit r/macapps、ProductHunt |
+| macOS アプリ | Reddit r/macapps、ProductHunt、MacStories、9to5Mac |
 
 ソースの追加・閾値の変更は `config.json` で行う。
 
@@ -91,9 +91,12 @@ python -m src.sources.rss https://code.claude.com/docs/en/changelog/rss.xml
 
 cron は 22:05 / 22:35 / 23:05 UTC（7:05 / 7:35 / 8:05 JST）の 3 本。Actions の schedule は
 高負荷時に遅延（実測 54 分）するだけでなく丸ごとスキップされる（実測 2026-08-06）ため、
-30 分おきに打つ。先に成功した回が `data/seen.json` を更新するので後続は「新着なし」で終わり、
-メールは 1 通に収まる。逆に 1 本目が送信失敗した場合は seen を更新しないので後続がリカバリする。
-同時実行は `concurrency` で直列化している。
+30 分おきに打つ。**メールは 1 日 1 通**で、送信に成功した回が `data/last_sent.json` に
+その日（JST）を書き、後続の回は収集も採点もせずに終了する。逆に 1 本目が送信失敗した場合は
+日付を書かないので後続がリカバリする。同時実行は `concurrency` で直列化している。
+
+> 既報フィルタ（`data/seen.json`）だけでは 2 通目が防げない。30 分の間にも新着が数件出るので、
+> 後続の回が「新着あり」と判定してしまう（実測で朝に 3 通届いた）。日付での判定が必要。
 
 ## 運用メモ
 
@@ -102,6 +105,8 @@ cron は 22:05 / 22:35 / 23:05 UTC（7:05 / 7:35 / 8:05 JST）の 3 本。Action
   「スコア分布」（9以上/8台/7台/6台/5以下の件数）をジャンル別に出している。
   低スコア帯ばかり載るようなら、枠を減らすか `src/scorer.py` の分類ルールを見直す
 - 採点済みの記事は低スコアでも `data/seen.json` に記録し、翌日以降 再採点しない
+- `mac` は供給が細い（実測 3 件/日）。9to5Mac は日 100 件流れてくるが大半が
+  Apple の一般ニュースで `other` に落ちる。件数を稼ぐより誤爆を避ける方を優先している
 - LLM が落ちた日は機械的なスコアとソース名からの分類にフォールバックし、
   メール末尾に「注意」として明示する。機械スコアでは GitHub 新着を 6.0 に抑える —
   star 数は「Claude Code にとって重要か」を測れないため、公式リリースと HackerNews を上に出す
