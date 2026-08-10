@@ -1,8 +1,8 @@
 {
   "categories": {
-    "cc": { "label": "Claude Code", "threshold": 7.0, "max_items": 20 },
-    "dev": { "label": "開発ツール", "threshold": 6.5, "max_items": 20 },
-    "mac": { "label": "macOS アプリ", "threshold": 6.5, "max_items": 20 }
+    "cc": { "label": "Claude Code", "max_items": 20 },
+    "dev": { "label": "開発ツール", "max_items": 20 },
+    "mac": { "label": "macOS アプリ", "max_items": 20 }
   },
   "score_batch_size": 80,
   "translate_batch_size": 20,

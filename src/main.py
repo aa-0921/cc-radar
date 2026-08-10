@@ -142,7 +142,7 @@ async def run(args: argparse.Namespace) -> int:
     evaluated_urls = [normalize_url(it.url) for it in candidates]
 
     if not selected:
-        print("[終了] 閾値を超える記事なし。メールは送らない")
+        print("[終了] 掲載対象なし（全件が other 分類）。メールは送らない")
         if not dryrun:
             state.save(known, evaluated_urls, int(conf.get("seen_max", 2000)))
         return 0

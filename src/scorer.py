@@ -92,7 +92,7 @@ def heuristic_score(item: Item) -> float:
         return 3.0
     if item.source == "GitHub新着":
         # star 数は「Claude Code にとって重要か」を測れない（無関係な人気リポも混ざる）。
-        # LLM 不在時は判定不能として閾値未満に留め、一次情報と HN を優先する
+        # LLM 不在時は判定不能として中位に置き、一次情報と HN を上に出す
         return 6.0
     base = 5.0
     if item.points:
@@ -247,18 +247,19 @@ def dedupe(items: list[Item]) -> list[Item]:
 
 def select(
     items: list[Item],
-    threshold: float,
     max_items: int,
     source_caps: dict[str, int] | None = None,
 ) -> list[Item]:
-    """閾値以上をスコア降順で上限まで取る。
+    """スコア降順で上限まで取る。足切りはしない。
+
+    スコアが低くても枠が空いていれば載せる。ジャンルごとに一定件数を必ず見たいため
+    （閾値で切ると供給の少ない dev / mac が 0 件の日が続く）。
 
     source_caps はソース別の掲載上限。GitHub 新着は同点（8.0）が大量に並ぶため、
     素のスコア順だと上位を占めて他ソースが押し出される（実測で 20 件中 18 件）。
     枠から溢れたぶんは、全体の上限に余りがあれば埋め合わせに使う。
     """
-    picked = [it for it in items if it.score >= threshold]
-    picked.sort(key=lambda x: (x.score, x.points), reverse=True)
+    picked = sorted(items, key=lambda x: (x.score, x.points), reverse=True)
 
     caps = source_caps or {}
     used: dict[str, int] = {}
@@ -283,26 +284,21 @@ def select_by_category(
     categories: dict[str, dict],
     source_caps: dict[str, int] | None = None,
 ) -> dict[str, list[Item]]:
-    """ジャンルごとに独立した枠と閾値で選抜する。
+    """ジャンルごとに独立した枠でスコア降順に選抜する。
 
     合計 1 枠だとスコア上位帯（Claude Code 本体のリリース）が枠を埋めて
     他ジャンルが押し出されるため、ジャンル別に枠を切る。
-    categories は {"cc": {"threshold": 7.0, "max_items": 20}, ...}。
+    categories は {"cc": {"max_items": 20}, ...}。
     """
     result: dict[str, list[Item]] = {}
     for key, conf in categories.items():
         subset = [it for it in items if it.category == key]
-        result[key] = select(
-            subset,
-            float(conf.get("threshold", 7.0)),
-            int(conf.get("max_items", 20)),
-            source_caps,
-        )
+        result[key] = select(subset, int(conf.get("max_items", 20)), source_caps)
     return result
 
 
 def histogram(items: list[Item]) -> str:
-    """スコア帯ごとの件数。閾値を上げ下げする判断材料にする"""
+    """スコア帯ごとの件数。ジャンルの枠を増減する判断材料にする"""
     bands = [
         ("9以上", 9.0, 99.0),
         ("8台", 8.0, 9.0),

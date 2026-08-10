@@ -61,6 +61,13 @@ def parse_feed(body: bytes, name: str, lang: str) -> list[Item]:
     return items
 
 
+def _error_label(e: Exception) -> str:
+    """失敗理由の表示。HTTP エラーはステータスまで出す（429 は一時的、404 は URL 見直しと対処が違う）"""
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"HTTP {e.response.status_code}"
+    return type(e).__name__
+
+
 async def fetch_one(client: httpx.AsyncClient, feed: dict) -> list[Item]:
     """フィード1本を取得してパースする。例外は呼び出し元に投げる"""
     resp = await client.get(feed["url"], follow_redirects=True)
@@ -83,7 +90,7 @@ async def collect(feeds: list[dict]) -> tuple[list[Item], list[str]]:
                 try:
                     items.extend(await fetch_one(client, feed))
                 except Exception as e:
-                    failed.append(f"{feed['name']}: {type(e).__name__}")
+                    failed.append(f"{feed['name']}: {_error_label(e)}")
 
         await asyncio.gather(*[guarded(f) for f in feeds])
 
