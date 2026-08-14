@@ -53,7 +53,7 @@ for m in sorted(json.load(sys.stdin)['data'], key=lambda m: -(m.get('context_len
 | 一次情報 | 公式 changelog RSS、`anthropics/claude-code` の releases / commits Atom |
 | 英語コミュニティ | Hacker News（Algolia API）、Google News RSS、GitHub Search API、Lobsters、GitHub Trending、dev.to、Changelog、Reddit（best-effort） |
 | 日本語 | Zenn（claudecode / mcp）、Qiita（claudecode）、Google News RSS |
-| macOS アプリ | Reddit r/macapps、ProductHunt、MacStories、9to5Mac |
+| macOS アプリ | Reddit r/macapps、ProductHunt、MacStories、9to5Mac、Six Colors、Eclectic Light、TidBITS、MacMenuBar、Macworld、OSXDaily |
 
 ソースの追加・閾値の変更は `config.json` で行う。
 
@@ -105,17 +105,27 @@ cron は 22:05 / 22:35 / 23:05 UTC（7:05 / 7:35 / 8:05 JST）の 3 本。Action
   「スコア分布」（9以上/8台/7台/6台/5以下の件数）をジャンル別に出している。
   低スコア帯ばかり載るようなら、枠を減らすか `src/scorer.py` の分類ルールを見直す
 - 採点済みの記事は低スコアでも `data/seen.json` に記録し、翌日以降 再採点しない
-- ジャンルの件数が伸びないときは、まず**供給ではなく分類**を疑う。`mac` が 6 件しか
-  出なかった原因は 9to5Mac / MacStories の記事が `other` に落ちていたことで（統合後 120 件中
-  36 件が other）、ソースを足しても解決しなかった。`src/scorer.py` の SYSTEM で
-  「開発と関係なくても Mac アプリ・macOS の使いこなしは mac」と明示し、代わりに
-  Apple の決算・ハードウェア・iPhone 専用の話題を除外条件として書いたら 20 枠が埋まった
+- ジャンルの件数が伸びない原因は**分類と供給の両方**にある。`mac` が埋まらなかったとき、
+  まず分類が原因だった（統合後 120 件中 36 件が `other` で、9to5Mac / MacStories の Mac アプリ
+  記事がそこに落ちていた）。`src/scorer.py` の SYSTEM で「開発と関係なくても Mac アプリ・
+  macOS の使いこなしは mac」と明示し、代わりに Apple の決算・ハードウェア・iPhone 専用の
+  話題を除外条件として書いて解消した。**その後さらに 1-2 件まで落ちた**のは供給側で、
+  `r/macapps` が mac のほぼ唯一の実供給源になっており 429 で 2 日連続（2026-08-13/14）
+  落ちたため。RSS は最新 10-30 件しか返さないので 1 ソースの穴を他が埋められない。
+  mac 系ソースを 10 本に増やして一本足を解消した
+- **ソースを足せば必ず増えるわけではない**。9to5Mac は日 100 件流れても mac 判定は数件で、
+  Apple の企業ニュース中心のフィード（MacRumors / AppleInsider / Daring Fireball）は
+  分類設計上ほぼ `other` に落ちるため候補数だけ膨らむ。追加候補は
+  「Mac アプリ・macOS の使いこなしが主題か」と**フィードの生死**（最終更新日）で選ぶ。
+  The Sweet Setup（最終 2025-06）と iMore（同 2024-09）は HTTP 200 でも更新停止済みで不採用にした
 - LLM が落ちた日は機械的なスコアとソース名からの分類にフォールバックし、
   メール末尾に「注意」として明示する。機械スコアでは GitHub 新着を 6.0 に抑える —
   star 数は「Claude Code にとって重要か」を測れないため、公式リリースと HackerNews を上に出す
 - Reddit は 1 本取ると約 60 秒 429 が返り続ける（`old.reddit.com` も同じ制限を共有していて
   ホストを変えても回避できない）。サブレディットは並列にせず 60 秒間隔で 1 本ずつ取る。
-  他ソースとは並列に走るので全体は待たされない。それでも失敗したらソース名をメール末尾に出す
+  他ソースとは並列に走るので全体は待たされない。60 秒空けても Actions の共有 IP では
+  落ちることがあるので、429 なら 1 度だけ待って撃ち直す。それでも失敗したらソース名を
+  メール末尾に出す
 - 日本語化は JSON 配列が返るまで最大 2 回撃つ。free モデルは同じ入力でも配列を返したり
   地の文を返したりするため（実測で日本語化が丸ごと落ちる日があった）。
   リトライ込みでも 1 実行あたり最大 4 リクエストで、free 枠の 50req/日 には収まる

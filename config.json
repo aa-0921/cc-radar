@@ -107,6 +107,42 @@
       "url": "https://9to5mac.com/feed/",
       "lang": "en",
       "weight": "normal"
+    },
+    {
+      "name": "Six Colors",
+      "url": "https://sixcolors.com/feed/",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "Eclectic Light",
+      "url": "https://eclecticlight.co/feed/",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "TidBITS",
+      "url": "https://tidbits.com/feed/",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "MacMenuBar",
+      "url": "https://macmenubar.com/feed/",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "Macworld",
+      "url": "https://www.macworld.com/feed",
+      "lang": "en",
+      "weight": "normal"
+    },
+    {
+      "name": "OSXDaily",
+      "url": "https://osxdaily.com/feed/",
+      "lang": "en",
+      "weight": "normal"
     }
   ],
   "hackernews": {

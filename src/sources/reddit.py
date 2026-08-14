@@ -17,6 +17,21 @@ TIMEOUT = 20.0
 FETCH_INTERVAL = 60.0
 
 
+async def _fetch(client: httpx.AsyncClient, sub: str) -> bytes:
+    """1 本取る。429 なら 1 度だけ待って撃ち直す。
+
+    60 秒空けても Actions の共有 IP では 2 本目以降が落ちることがある
+    （実測 2026-08-13/14 に r/macapps が 2 日連続で失敗し、mac ジャンルが 1-2 件に落ちた）。
+    """
+    url = f"https://www.reddit.com/r/{sub}/.rss"
+    resp = await client.get(url, follow_redirects=True)
+    if resp.status_code == 429:
+        await asyncio.sleep(FETCH_INTERVAL)
+        resp = await client.get(url, follow_redirects=True)
+    resp.raise_for_status()
+    return resp.content
+
+
 async def collect(conf: dict) -> tuple[list[Item], list[str]]:
     """設定のサブレディットを順に取得する。戻り値 = (アイテム一覧, 失敗ソース名一覧)
 
@@ -30,11 +45,7 @@ async def collect(conf: dict) -> tuple[list[Item], list[str]]:
             if i:
                 await asyncio.sleep(FETCH_INTERVAL)
             try:
-                resp = await client.get(
-                    f"https://www.reddit.com/r/{sub}/.rss", follow_redirects=True
-                )
-                resp.raise_for_status()
-                items.extend(parse_feed(resp.content, f"r/{sub}", "en"))
+                items.extend(parse_feed(await _fetch(client, sub), f"r/{sub}", "en"))
             except Exception as e:
                 failed.append(f"r/{sub}: {type(e).__name__}")
 
